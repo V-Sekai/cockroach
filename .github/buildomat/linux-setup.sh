@@ -5,7 +5,7 @@ sudo apt-get install -y --no-install-recommends \
 
 pushd /work
 curl -sSfL --retry 10 -O "https://go.dev/dl/go$GO_VERSION.linux-amd64.tar.gz"
-curl -sSfL --retry 10 -O "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-x64.tar.xz"
+curl -sSfL --retry 10 -O "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-darwin-$DARWIN_ARCH.tar.xz"
 curl -sSfL --retry 10 -O "https://github.com/yarnpkg/yarn/releases/download/v$YARN_VERSION/yarn-$YARN_VERSION.js"
 sha256sum --ignore-missing -c "$OLDPWD/.github/buildomat/SHA256SUMS"
 tar xf "go$GO_VERSION.linux-amd64.tar.gz"
