@@ -7,7 +7,7 @@ on:
   pull_request:
 
 env:
-  NODE_VERSION: v16.20.2
+  NODE_VERSION: 16.20.2
 
 jobs:
   build-arch:
@@ -39,7 +39,7 @@ jobs:
       - name: Build macOS (${{ matrix.arch.arch }})
         run: |
           export PATH="$HOME/toolchain/go/bin:$PATH"
-          export PATH="$HOME/toolchain/node-v${{ matrix.arch.arch }}-darwin-${{ matrix.arch.arch }}/bin:$PATH"
+          export PATH="$HOME/toolchain/node-${{ matrix.arch.arch }}-darwin-${{ matrix.arch.arch }}/bin:$PATH"
           export PATH="$HOME/toolchain/go/bin:$HOME/toolchain/node-v${{ matrix.arch.arch }}-darwin-${{ matrix.arch.arch }}/bin:/opt/homebrew/opt/coreutils/libexec/gnubin:/opt/homebrew/opt/make/libexec/gnubin:$PATH"
           export NODE_OPTIONS=--openssl-legacy-provider
           gmake -j`sysctl -n hw.ncpu` cockroachoss BUILDTYPE=release ${{ matrix.arch.makeargs }}

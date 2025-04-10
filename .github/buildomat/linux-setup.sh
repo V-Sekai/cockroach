@@ -13,4 +13,4 @@ tar xf "node-v$NODE_VERSION-linux-x64.tar.xz"
 mv "yarn-$YARN_VERSION.js" "node-v$NODE_VERSION-linux-x64/bin/yarn"
 chmod a+x "node-v$NODE_VERSION-linux-x64/bin/yarn"
 popd
-export PATH="/work/go/bin:/work/node-v$NODE_VERSION-linux-x64/bin:$PATH"
+export PATH="/work/go/bin:/work/node-vNODE_VERSION-linux-x64/bin:$PATH"
