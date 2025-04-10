@@ -6,6 +6,9 @@ on:
       - main
   pull_request:
 
+env:
+  NODE_VERSION: 16.20.2
+
 jobs:
   build-arch:
     strategy:
@@ -31,7 +34,7 @@ jobs:
         with:
           os: macos
           arch: ${{ matrix.arch.arch }}
-          node_version: 16.20.2
+          node_version: ${{ env.NODE_VERSION }}
 
       - name: Build macOS (${{ matrix.arch.arch }})
         run: |
