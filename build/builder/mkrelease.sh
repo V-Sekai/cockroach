@@ -35,6 +35,8 @@ source build/shlib.sh
 # custom build type.
 BUILDTYPE="${MKRELEASE_BUILDTYPE:-release}"
 
+export NODE_VERSION=18.17.1
+
 case "${1-}" in
   ""|?(amd64-)linux?(-gnu))
     args=(
