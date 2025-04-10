@@ -2,6 +2,8 @@ name: build-macos
 
 on:
   push:
+    branches:
+      - main
   pull_request:
 
 jobs:
@@ -16,23 +18,33 @@ jobs:
               EXTRA_XCMAKE_FLAGS=-DCMAKE_OSX_ARCHITECTURES=x86_64
               EXTRA_XCONFIGURE_FLAGS="CFLAGS='-arch x86_64'"
           - arch: arm64
+            # Add arm64 makeargs if different from amd64
+            makeargs: "" # Placeholder - Define arm64 specific make args if needed
     runs-on: macos-14
     steps:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
-          ref: ${{ github.event.pull_request.head.sha }} # to match buildomat behavior
-          fetch-depth: 0 # to fetch tags
-      - name: Toolchain setup
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Setup macOS Toolchain
+        uses: ./.github/actions/setup-toolchain # Use the composite action
+        with:
+          os: macos
+          arch: ${{ matrix.arch.arch }}
+
+      - name: Build macOS (${{ matrix.arch.arch }})
         run: |
-          set -o xtrace
-          source .github/workflows/macos-setup.sh
-          echo "PATH=$PATH" >>"$GITHUB_ENV"
-      - name: Build
-        run: gmake -j`sysctl -n hw.ncpu` cockroachoss BUILDTYPE=release ${{ matrix.arch.makeargs }}
+          export PATH="$HOME/toolchain/go/bin:$PATH"
+          # The node version is hardcoded in the setup-toolchain action
+          export PATH="$HOME/toolchain/node-v18.17.0-darwin-${{ matrix.arch.arch }}/bin:$PATH"
+          export PATH="$HOME/toolchain/go/bin:$HOME/toolchain/node-v18.17.0-darwin-${{ matrix.arch.arch }}/bin:/opt/homebrew/opt/coreutils/libexec/gnubin:/opt/homebrew/opt/make/libexec/gnubin:$PATH"
+          export NODE_OPTIONS=--openssl-legacy-provider
+          gmake -j`sysctl -n hw.ncpu` cockroachoss BUILDTYPE=release ${{ matrix.arch.makeargs }}
         env:
           BROWSERSLIST_IGNORE_OLD_DATA: 1
           CGO_ENABLED: 1
           MACOSX_DEPLOYMENT_TARGET: 13
+          
       - uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
           name: ${{ matrix.arch.arch }}
@@ -52,9 +64,11 @@ jobs:
           set -o pipefail
           set -o xtrace
           mkdir -p artifacts/cockroach/lib
-          lipo -create -output artifacts/cockroach/cockroach {amd64,arm64}/cockroachoss
-          lipo -create -output artifacts/cockroach/lib/libgeos.dylib {amd64,arm64}/lib/libgeos.dylib
-          lipo -create -output artifacts/cockroach/lib/libgeos_c.dylib {amd64,arm64}/lib/libgeos_c.dylib
+          # Ensure downloaded artifacts are in expected amd64/arm64 directories
+          # The download action might place them in subdirectories named after the artifact name
+          lipo -create -output artifacts/cockroach/cockroach amd64/cockroachoss arm64/cockroachoss
+          lipo -create -output artifacts/cockroach/lib/libgeos.dylib amd64/lib/libgeos.dylib arm64/lib/libgeos.dylib
+          lipo -create -output artifacts/cockroach/lib/libgeos_c.dylib amd64/lib/libgeos_c.dylib arm64/lib/libgeos_c.dylib
           chmod a+x artifacts/cockroach/{cockroach,lib/*.dylib}
           tar -cvf - -C artifacts cockroach | gzip -9 > cockroach.tgz
           shasum -a 256 cockroach.tgz | awk '{ print $1 }' > cockroach.tgz.sha256
@@ -66,3 +80,31 @@ jobs:
             cockroach.tgz.sha256
           if-no-files-found: error
           compression-level: 0
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Windows Toolchain
+        uses: ./.github/actions/setup-toolchain # Use the composite action
+        with:
+          os: windows
+
+      # - name: Build Windows binary
+      #   shell: bash
+      #   run: |
+      #     set -euo pipefail
+      #     # Env vars (PATH, CC, CXX) should be set by the composite action
+      #     gmake -j$(nproc) cockroachoss BUILDTYPE=release \
+      #       XGOOS=windows \
+      #       XGOARCH=amd64 \
+      #       XCMAKE_SYSTEM_NAME=Windows \
+      #       TARGET_TRIPLE=x86_64-w64-mingw32 \
+      #       LDFLAGS=-static
+      # - name: Upload Windows binary
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: windows-binary
+      #     path: build/cockroachoss.exe # Verify this path

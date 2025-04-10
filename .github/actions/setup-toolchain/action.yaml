@@ -1,0 +1,87 @@
+name: 'Setup Toolchain'
+description: 'Installs Go, Node, Yarn, and build dependencies for macOS or Windows'
+inputs:
+  os:
+    description: 'Operating system (macos or windows)'
+    required: true
+  arch:
+    description: 'Architecture (amd64 or arm64) - relevant for macOS'
+    required: false
+    default: 'amd64' # Default or adjust as needed
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup for macOS
+      if: inputs.os == 'macos'
+      shell: bash
+      run: |
+        set -o xtrace
+        SOURCE_DIR=$PWD
+        # Assuming versions.sh is accessible at the root
+        source .github/buildomat/versions.sh
+
+        brew install autoconf coreutils make
+
+        mkdir "$HOME/toolchain"
+        pushd "$HOME/toolchain"
+
+        # Determine Go/Node architecture based on input or runner arch
+        DARWIN_ARCH="arm64" # macos-14 is arm64
+        if [[ "${{ inputs.arch }}" == "amd64" ]]; then
+           # If building amd64 specifically, might need amd64 tools, adjust if necessary
+           # Or assume arm64 runner can cross-compile/use arm64 tools for both
+           echo "Using arm64 tools on arm64 runner for macOS build"
+        fi
+
+        curl -sSfL --retry 10 -O "https://go.dev/dl/go$GO_VERSION.darwin-$DARWIN_ARCH.tar.gz"
+        curl -sSfL --retry 10 -O "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-darwin-$DARWIN_ARCH.tar.xz"
+        curl -sSfL --retry 10 -O "https://github.com/yarnpkg/yarn/releases/download/v1.22.19/yarn-1.22.19.js"
+
+        # Assuming SHA256SUMS is accessible at the root
+        sha256sum --ignore-missing -c "$SOURCE_DIR/.github/buildomat/SHA256SUMS"
+
+        # Add Go binary directory to PATH immediately after extraction
+        export PATH="$HOME/toolchain/go/bin:$PATH"
+
+        # Persist Go binary directory in PATH for subsequent steps
+        echo "$HOME/toolchain/go/bin" >> $GITHUB_PATH
+
+        tar xf "go$GO_VERSION.darwin-$DARWIN_ARCH.tar.gz"
+        tar xf "node-v$NODE_VERSION-darwin-$DARWIN_ARCH.tar.xz"
+
+        mv "yarn-1.22.19.js" "node-v$NODE_VERSION-darwin-$DARWIN_ARCH/bin/yarn"
+        chmod a+x "node-v$NODE_VERSION-darwin-$DARWIN_ARCH/bin/yarn"
+
+        # Apply patch to fix golang/go#53000
+        pushd go/src
+        patch -p2 <"$SOURCE_DIR/.github/workflows/e66f895667cd51d0d28c42d369a803c12db8bb35.patch"
+        go build cmd/cgo
+        popd
+        # Adjust target path based on actual Go tool layout
+        mv go/src/cgo go/pkg/tool/darwin_${DARWIN_ARCH}/cgo
+
+        popd # Exit $HOME/toolchain
+
+    - name: Setup for Windows
+      if: inputs.os == 'windows'
+      shell: bash
+      run: |
+        set -o xtrace
+        # Install necessary tools using Chocolatey
+        choco install -y make cmake ccache mingw golang nodejs yarn --params="'/InstallDir:C:\tools'"
+
+        # Add tools to PATH for subsequent steps
+        # Note: Adjust paths if choco installs elsewhere or if specific versions are needed
+        echo "C:\tools\Go\bin" >> $GITHUB_PATH
+        echo "C:\tools\nodejs" >> $GITHUB_PATH
+        echo "C:\ProgramData\chocolatey\bin" >> $GITHUB_PATH # Yarn, Make, CMake usually here
+        echo "C:\ProgramData\chocolatey\lib\ccache\tools" >> $GITHUB_PATH
+        echo "C:\tools\mingw64\bin" >> $GITHUB_PATH # MinGW compilers
+
+        # Set compiler environment variables for ccache/mingw
+        echo "CC=ccache gcc" >> $GITHUB_ENV
+        echo "CXX=ccache g++" >> $GITHUB_ENV
+        # Set ccache directory (optional, but good practice)
+        echo "CCACHE_DIR=$GITHUB_WORKSPACE/.ccache" >> $GITHUB_ENV
+        ccache -M 1G # Set max cache size

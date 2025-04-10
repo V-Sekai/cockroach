@@ -1,0 +1,12 @@
+; DO NOT EDIT (unless you know what you are doing)
+;
+; This subdirectory is a git "subrepo", and this file is maintained by the
+; git-subrepo command. See https://github.com/ingydotnet/git-subrepo#readme
+;
+[subrepo]
+	remote = https://github.com/cockroachdb/geos.git
+	branch = master
+	commit = 19dc3b19338c2aded5197ca0e5a5456b028defbd
+	parent = d3b50fa4d032e4c57cfbb15991782ba874d6c299
+	method = merge
+	cmdver = 0.4.9
