@@ -35,9 +35,9 @@ jobs:
       - name: Build macOS (${{ matrix.arch.arch }})
         run: |
           export PATH="$HOME/toolchain/go/bin:$PATH"
-          # The node version is hardcoded in the setup-toolchain action
-          export PATH="$HOME/toolchain/node-v18.17.0-darwin-${{ matrix.arch.arch }}/bin:$PATH"
-          export PATH="$HOME/toolchain/go/bin:$HOME/toolchain/node-v18.17.0-darwin-${{ matrix.arch.arch }}/bin:/opt/homebrew/opt/coreutils/libexec/gnubin:/opt/homebrew/opt/make/libexec/gnubin:$PATH"
+          # Updated to use Node.js 16.20.2
+          export PATH="$HOME/toolchain/node-v16.20.2-darwin-${{ matrix.arch.arch }}/bin:$PATH"
+          export PATH="$HOME/toolchain/go/bin:$HOME/toolchain/node-v16.20.2-darwin-${{ matrix.arch.arch }}/bin:/opt/homebrew/opt/coreutils/libexec/gnubin:/opt/homebrew/opt/make/libexec/gnubin:$PATH"
           export NODE_OPTIONS=--openssl-legacy-provider
           gmake -j`sysctl -n hw.ncpu` cockroachoss BUILDTYPE=release ${{ matrix.arch.makeargs }}
         env:
