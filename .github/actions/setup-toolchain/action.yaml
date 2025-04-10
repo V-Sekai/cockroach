@@ -8,6 +8,9 @@ inputs:
     description: 'Architecture (amd64 or arm64) - relevant for macOS'
     required: false
     default: 'amd64' # Default or adjust as needed
+  node_version:
+    description: 'Node.js version to install'
+    required: true
 
 runs:
   using: "composite"
@@ -35,7 +38,7 @@ runs:
         fi
 
         curl -sSfL --retry 10 -O "https://go.dev/dl/go$GO_VERSION.darwin-$DARWIN_ARCH.tar.gz"
-        curl -sSfL --retry 10 -O "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-darwin-$DARWIN_ARCH.tar.xz"
+        curl -sSfL --retry 10 -O "https://nodejs.org/dist/v${{ inputs.node_version }}/node-v${{ inputs.node_version }}-darwin-$DARWIN_ARCH.tar.xz"
         curl -sSfL --retry 10 -O "https://github.com/yarnpkg/yarn/releases/download/v1.22.19/yarn-1.22.19.js"
 
         # Assuming SHA256SUMS is accessible at the root
