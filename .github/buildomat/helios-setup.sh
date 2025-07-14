@@ -1,7 +1,10 @@
 source .github/buildomat/versions.sh
 
+GO_MAJOR=${GO_VERSION%.*}
+NODE_MAJOR=${NODE_VERSION%%.*}
+
 pfexec pkg install \
-    /developer/build-essential /ooce/developer/cmake /ooce/developer/go-117 /ooce/runtime/node-16
+    /developer/build-essential /ooce/developer/cmake "/ooce/developer/go-${GO_MAJOR/./}@$GO_VERSION" "/ooce/runtime/node-$NODE_MAJOR@$NODE_VERSION"
 
 pushd /work
 mkdir bin
@@ -10,4 +13,4 @@ sha256sum --ignore-missing -c "$OLDPWD/.github/buildomat/SHA256SUMS"
 mv "yarn-$YARN_VERSION.js" bin/yarn
 chmod a+x bin/yarn
 popd
-export PATH="/work/bin:/opt/ooce/go-1.17/bin:$PATH"
+export PATH="/work/bin:/opt/ooce/go-$GO_MAJOR/bin:/opt/ooce/node-$NODE_MAJOR/bin:$PATH"
