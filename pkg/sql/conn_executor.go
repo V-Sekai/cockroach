@@ -1054,12 +1054,7 @@ func (ex *connExecutor) closeWrapper(ctx context.Context, recovered interface{})
 			log.SqlExec.Shoutf(ctx, severity.ERROR,
 				"a SQL panic has occurred while executing the following statement:\n%s",
 				// For the log message, the statement is not anonymized.
-				truncateStatementStringForTelemetry(ex.curStmtAST.String()))
-
-			// Embed the statement in the error object for the telemetry
-			// report below. The statement gets anonymized.
-			vt := ex.planner.extendedEvalCtx.VirtualSchemas
-			panicErr = WithAnonymizedStatement(panicErr, ex.curStmtAST, vt)
+				ex.curStmtAST.String())
 		}
 
 		// Report the panic to telemetry in any case.
@@ -3098,7 +3093,6 @@ func (ex *connExecutor) txnStateTransitionsApplyWrapper(
 				errors.Safe(advInfo.txnEvent.eventType.String()),
 				res.Err())
 			log.Errorf(ex.Ctx(), "%v", err)
-			errorutil.SendReport(ex.Ctx(), &ex.server.cfg.Settings.SV, err)
 			return advanceInfo{}, err
 		}
 
@@ -3628,25 +3622,4 @@ type contextStatementKey struct{}
 // will then be included in crash reports which use that context.
 func withStatement(ctx context.Context, stmt tree.Statement) context.Context {
 	return context.WithValue(ctx, contextStatementKey{}, stmt)
-}
-
-// statementFromCtx returns the statement value from a context, or nil if unset.
-func statementFromCtx(ctx context.Context) tree.Statement {
-	stmt := ctx.Value(contextStatementKey{})
-	if stmt == nil {
-		return nil
-	}
-	return stmt.(tree.Statement)
-}
-
-func init() {
-	// Register a function to include the anonymized statement in crash reports.
-	logcrash.RegisterTagFn("statement", func(ctx context.Context) string {
-		stmt := statementFromCtx(ctx)
-		if stmt == nil {
-			return ""
-		}
-		// Anonymize the statement for reporting.
-		return anonymizeStmtAndConstants(stmt, nil /* VirtualTabler */)
-	})
 }

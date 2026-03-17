@@ -12,12 +12,10 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"path/filepath"
 	"reflect"
-	"strconv"
 	"sync"
 	"time"
 
@@ -45,7 +43,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/rpc"
 	"github.com/cockroachdb/cockroach/pkg/rpc/nodedialer"
 	"github.com/cockroachdb/cockroach/pkg/server/debug"
-	"github.com/cockroachdb/cockroach/pkg/server/diagnostics"
 	"github.com/cockroachdb/cockroach/pkg/server/serverpb"
 	"github.com/cockroachdb/cockroach/pkg/server/status"
 	"github.com/cockroachdb/cockroach/pkg/server/systemconfigwatcher"
@@ -86,7 +83,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/redact"
-	"github.com/getsentry/sentry-go"
 	"google.golang.org/grpc/codes"
 )
 
@@ -115,7 +111,6 @@ type Server struct {
 	runtime          *status.RuntimeStatSampler
 	ruleRegistry     *metric.RuleRegistry
 	promRuleExporter *metric.PrometheusRuleExporter
-	updates          *diagnostics.UpdateChecker
 	ctSender         *sidetransport.Sender
 
 	http            *httpServer
@@ -658,21 +653,6 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 	recorder := status.NewMetricsRecorder(clock, nodeLiveness, rpcContext, g, st)
 	registry.AddMetricStruct(rpcContext.RemoteClocks.Metrics())
 
-	updates := &diagnostics.UpdateChecker{
-		StartTime:        timeutil.Now(),
-		AmbientCtx:       &cfg.AmbientCtx,
-		Config:           cfg.BaseConfig.Config,
-		Settings:         cfg.Settings,
-		StorageClusterID: rpcContext.StorageClusterID.Get,
-		LogicalClusterID: rpcContext.LogicalClusterID.Get,
-		NodeID:           nodeIDContainer.Get,
-		SQLInstanceID:    idContainer.SQLInstanceID,
-	}
-
-	if cfg.TestingKnobs.Server != nil {
-		updates.TestingKnobs = &cfg.TestingKnobs.Server.(*TestingKnobs).DiagnosticsTestingKnobs
-	}
-
 	tenantUsage := NewTenantUsageServer(st, db, internalExecutor)
 	registry.AddMetricStruct(tenantUsage.Metrics())
 
@@ -841,7 +821,6 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 		recorder:               recorder,
 		ruleRegistry:           ruleRegistry,
 		promRuleExporter:       promRuleExporter,
-		updates:                updates,
 		ctSender:               ctSender,
 		runtime:                runtimeSampler,
 		http:                   sHTTP,
@@ -1175,13 +1154,9 @@ func (s *Server) PreStart(ctx context.Context) error {
 		listenHTTP:   s.cfg.HTTPAdvertiseAddr,
 	}.Iter()
 
-	encryptedStore := false
 	for _, storeSpec := range s.cfg.Stores.Specs {
 		if storeSpec.InMemory {
 			continue
-		}
-		if storeSpec.IsEncrypted() {
-			encryptedStore = true
 		}
 
 		for name, val := range listenerFiles {
@@ -1376,16 +1351,6 @@ func (s *Server) PreStart(ctx context.Context) error {
 		return err
 	}
 	s.replicationReporter.Start(ctx, s.stopper)
-
-	sentry.ConfigureScope(func(scope *sentry.Scope) {
-		scope.SetTags(map[string]string{
-			"cluster":         s.StorageClusterID().String(),
-			"node":            s.NodeID().String(),
-			"server_id":       fmt.Sprintf("%s-%s", s.StorageClusterID().Short(), s.NodeID()),
-			"engine_type":     s.cfg.StorageEngine.String(),
-			"encrypted_store": strconv.FormatBool(encryptedStore),
-		})
-	})
 
 	// We can now add the node registry.
 	s.recorder.AddNode(
@@ -1629,14 +1594,6 @@ func (s *Server) TempDir() string {
 // PGServer exports the pgwire server. Used by tests.
 func (s *Server) PGServer() *pgwire.Server {
 	return s.sqlServer.pgServer
-}
-
-// StartDiagnostics starts periodic diagnostics reporting and update checking.
-// NOTE: This is not called in PreStart so that it's disabled by default for
-// testing.
-func (s *Server) StartDiagnostics(ctx context.Context) {
-	s.updates.PeriodicallyCheckForUpdates(ctx, s.stopper)
-	s.sqlServer.StartDiagnostics(ctx)
 }
 
 func init() {
