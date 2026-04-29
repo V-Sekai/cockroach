@@ -48,13 +48,13 @@ func TestMakeYAMLConfig(t *testing.T) {
 			mockCluster: func(ctrl *gomock.Controller) Cluster {
 				c := NewMockCluster(ctrl)
 				c.EXPECT().
-					ExternalIP(ctx, nilLogger(), []int{1}).
+					ExternalIP(ctx, gomock.Any(), []int{1}).
 					Return([]string{"127.0.0.1"}, nil)
 				c.EXPECT().
-					ExternalIP(ctx, nilLogger(), []int{3, 4, 5}).
+					ExternalIP(ctx, gomock.Any(), []int{3, 4, 5}).
 					Return([]string{"127.0.0.3", "127.0.0.4", "127.0.0.5"}, nil)
 				c.EXPECT().
-					ExternalIP(ctx, nilLogger(), []int{6}).
+					ExternalIP(ctx, gomock.Any(), []int{6}).
 					Return([]string{"127.0.0.6"}, nil)
 				return c
 			},
@@ -108,13 +108,13 @@ scrape_configs:
 			mockCluster: func(ctrl *gomock.Controller) Cluster {
 				c := NewMockCluster(ctrl)
 				c.EXPECT().
-					ExternalIP(ctx, nilLogger(), []int{3, 4, 5}).
+					ExternalIP(ctx, gomock.Any(), []int{3, 4, 5}).
 					Return([]string{"127.0.0.3", "127.0.0.4", "127.0.0.5"}, nil)
 				c.EXPECT().
-					ExternalIP(ctx, nilLogger(), []int{6}).
+					ExternalIP(ctx, gomock.Any(), []int{6}).
 					Return([]string{"127.0.0.6"}, nil)
 				c.EXPECT().
-					ExternalIP(ctx, nilLogger(), []int{8, 9}).
+					ExternalIP(ctx, gomock.Any(), []int{8, 9}).
 					Return([]string{"127.0.0.8", "127.0.0.9"}, nil)
 				return c
 			},

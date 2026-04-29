@@ -18,7 +18,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/settings"
-	"github.com/cockroachdb/cockroach/pkg/util/envutil"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/errors"
 )
@@ -67,11 +66,6 @@ type Settings struct {
 // obtain it along with the current value consistently.
 type OverridesInformer interface {
 	IsOverridden(settingName string) bool
-}
-
-// TelemetryOptOut is a place for controlling whether to opt out of telemetry or not.
-func TelemetryOptOut() bool {
-	return envutil.EnvOrDefaultBool("COCKROACH_SKIP_ENABLING_DIAGNOSTIC_REPORTING", false)
 }
 
 // NoSettings is used when a func requires a Settings but none is available

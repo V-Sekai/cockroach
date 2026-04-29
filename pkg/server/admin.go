@@ -57,7 +57,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/iterutil"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/log/eventpb"
-	"github.com/cockroachdb/cockroach/pkg/util/log/logcrash"
 	"github.com/cockroachdb/cockroach/pkg/util/mon"
 	"github.com/cockroachdb/cockroach/pkg/util/protoutil"
 	"github.com/cockroachdb/cockroach/pkg/util/quotapool"
@@ -218,8 +217,7 @@ func serverError(ctx context.Context, err error) error {
 	// Include the PGCode in the message for easier troubleshooting
 	errCode := pgerror.GetPGCode(err).String()
 	if errCode != pgcode.Uncategorized.String() {
-		errMessage := fmt.Sprintf("%s Error Code: %s", errAPIInternalErrorString, errCode)
-		return status.Errorf(codes.Internal, errMessage)
+		return status.Errorf(codes.Internal, "%s Error Code: %s", errAPIInternalErrorString, errCode)
 	}
 
 	// The error is already grpcstatus formatted error.
@@ -1886,7 +1884,7 @@ func (s *adminServer) Cluster(
 	return &serverpb.ClusterResponse{
 		// TODO(knz): Respond with the logical cluster ID as well.
 		ClusterID:         storageClusterID.String(),
-		ReportingEnabled:  logcrash.DiagnosticsReportingEnabled.Get(&s.server.st.SV),
+		ReportingEnabled:  false,
 		EnterpriseEnabled: enterpriseEnabled,
 	}, nil
 }
