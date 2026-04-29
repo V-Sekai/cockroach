@@ -1,49 +1,132 @@
-name: Build CockroachDB Docker image
+name: Build CockroachDB Multi-Arch Docker image
 
 on:
   push:
     branches:
-      - release-22.1-oxide
+      - release-22.1-v-sekai
   workflow_dispatch:
 
 jobs:
-  build-docker-image:
-    runs-on: ubuntu-latest
+  build:
+    name: Build linux/${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
-      - name: Docker Setup Buildx
-        uses: docker/setup-buildx-action@v3.10.0
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            build-essential cmake autoconf libtool \
+            libncurses-dev libbz2-dev libsnappy-dev \
+            clang lld bison
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+      - name: Set up Go 1.17
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.17"
+          cache: false
+
+      - name: Build cockroachoss + GEOS
+        run: make -j$(nproc) cockroachoss BUILDTYPE=release
+        env:
+          CGO_ENABLED: "1"
+          GOMAXPROCS: "4"
+          NODE_OPTIONS: "--openssl-legacy-provider"
+
+      - name: Prepare deploy directory
+        run: |
+          cp cockroachoss build/deploy/cockroach
+          chmod +x build/deploy/cockroach
+          cp lib/libgeos.so lib/libgeos_c.so build/deploy/ 2>/dev/null || true
+          cp -r licenses build/deploy/
+
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push ${{ matrix.arch }} image
+        uses: docker/build-push-action@v6
+        with:
+          context: build/deploy
+          push: true
+          platforms: linux/${{ matrix.arch }}
+          tags: ghcr.io/v-sekai/cockroach:latest-${{ matrix.arch }}
+
+  build-windows:
+    name: Build windows/amd64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install toolchain via Chocolatey
+        shell: bash
         run: |
-          GIT_SHA=865aff1595e494c2ce95030c7a2f20c4370b5ff8
-          BUILD_URL=https://buildomat.eng.oxide.computer/public/file/oxidecomputer/cockroach/linux-amd64/$GIT_SHA/cockroach.tgz
+          choco install -y make cmake mingw golang nodejs yarn
+          echo "C:/tools/Go/bin" >> $GITHUB_PATH
+          echo "C:/tools/nodejs" >> $GITHUB_PATH
+          echo "C:/ProgramData/mingw64/mingw64/bin" >> $GITHUB_PATH
 
-          echo "Downloading $BUILD_URL"
-          curl -sS -O $BUILD_URL
-          tar -xvzf cockroach.tgz
+      - name: Set up Go 1.17
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.17"
+          cache: false
 
-          cp -v ./cockroach/cockroach build/deploy/cockroach
-          cp -v ./cockroach/lib/* build/deploy/
-          cp -v -r licenses build/deploy/
+      - name: Build cockroachoss.exe
+        shell: bash
+        run: |
+          make -j$(nproc) cockroachoss BUILDTYPE=release \
+            XGOOS=windows \
+            XGOARCH=amd64 \
+            XCMAKE_SYSTEM_NAME=Windows \
+            TARGET_TRIPLE=x86_64-w64-mingw32 \
+            LDFLAGS=-static
+        env:
+          CGO_ENABLED: "1"
+          CC: x86_64-w64-mingw32-gcc
+          CXX: x86_64-w64-mingw32-g++
+          NODE_OPTIONS: "--openssl-legacy-provider"
 
-          cd build/deploy
-          docker buildx build \
-            --push \
-            --platform linux/amd64 \
-            --progress plain \
+      - name: Upload Windows binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: cockroach-windows-amd64
+          path: cockroachoss.exe
+          if-no-files-found: error
+
+  manifest:
+    name: Create multi-arch manifest
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push multi-arch manifest
+        run: |
+          docker buildx imagetools create \
             --tag ghcr.io/v-sekai/cockroach:latest \
             --tag ghcr.io/v-sekai/cockroach:${{ github.sha }} \
-            .
+            ghcr.io/v-sekai/cockroach:latest-amd64 \
+            ghcr.io/v-sekai/cockroach:latest-arm64
