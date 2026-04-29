@@ -51,3 +51,4 @@ pkg/security/securitytest/embedded.go
 
 # Temporary directories during gomock generate
 **/gomock_reflect_*
+.DS_Store
