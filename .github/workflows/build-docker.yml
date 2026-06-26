@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - release-22.1-v-sekai
+  pull_request:
+  merge_group:
   workflow_dispatch:
 
 jobs:
@@ -29,7 +31,7 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y \
             build-essential cmake autoconf libtool \
-            libncurses-dev libbz2-dev libsnappy-dev \
+            libncurses-dev libbz2-dev libsnappy-dev libedit-dev \
             clang lld bison
 
       - name: Set up Go
@@ -53,6 +55,7 @@ jobs:
           cp -r licenses build/deploy/
 
       - uses: docker/login-action@v3
+        if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -64,25 +67,34 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: build/deploy
-          push: true
+          # Build always (the PR / merge-queue gate); only publish on push/dispatch.
+          push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
           platforms: linux/${{ matrix.arch }}
           tags: ghcr.io/v-sekai/cockroach:latest-${{ matrix.arch }}
 
   build-windows:
     name: Build windows/amd64
-    runs-on: windows-latest
+    # Cross-compile from Linux on a plain ubuntu runner with the mingw-w64
+    # toolchain. The native windows-latest job and the cockroachdb/builder image
+    # both fail at `make cockroachoss` ("No rule to make target") -- the builder
+    # image forces the Bazel build path with no bazel installed. The fork's
+    # make-based build works natively on ubuntu (see the linux job), so we reuse
+    # that environment and just cross-target windows via TARGET_TRIPLE=...-w64-...
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          submodules: true
 
-      - name: Install toolchain via Chocolatey
-        shell: bash
+      - name: Install build dependencies (host + mingw-w64 cross toolchain)
         run: |
-          choco install -y make cmake mingw golang nodejs yarn
-          echo "C:/tools/Go/bin" >> $GITHUB_PATH
-          echo "C:/tools/nodejs" >> $GITHUB_PATH
-          echo "C:/ProgramData/mingw64/mingw64/bin" >> $GITHUB_PATH
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            build-essential cmake autoconf libtool \
+            libncurses-dev libbz2-dev libsnappy-dev \
+            clang lld bison \
+            mingw-w64
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -90,20 +102,45 @@ jobs:
           go-version-file: "go.mod"
           cache: false
 
-      - name: Build cockroachoss.exe
-        shell: bash
+      - name: Cross-build cockroachoss.exe (windows/amd64)
         run: |
-          make -j$(nproc) cockroachoss BUILDTYPE=release \
+          # The make binary name carries SUFFIX := $(GOEXE); for a windows target
+          # GOEXE=.exe so the real target is `cockroachoss.exe` (no unsuffixed
+          # alias for cross builds). The cross compiler goes in XCC/XCXX -- the
+          # Makefile defaults XCC to $(TARGET_TRIPLE)-cc, but mingw-w64 ships
+          # x86_64-w64-mingw32-gcc/g++. Leave host CC/CXX native: they build the
+          # host-side tooling, while XCC/XCXX (+ --host) cross-build the c-deps.
+          # Modern mingw-w64 (GCC 13, SEH) re-exports _Unwind_Resume from static
+          # libgcc into the geos DLLs; GCC 10+ treats the duplicate as an error.
+          # geos's CMakeLists overrides CMAKE_*_LINKER_FLAGS so a -D cache var
+          # doesn't stick -- force --allow-multiple-definition at the compiler
+          # driver via wrappers, and point XCC/XCXX at them. LDFLAGS covers the
+          # final Go/cgo link.
+          mkdir -p "$HOME/xbin"
+          for t in gcc g++; do
+            printf '#!/bin/bash\nexec /usr/bin/x86_64-w64-mingw32-%s "$@" -Wl,--allow-multiple-definition\n' "$t" \
+              > "$HOME/xbin/x86_64-w64-mingw32-$t"
+            chmod +x "$HOME/xbin/x86_64-w64-mingw32-$t"
+          done
+          make -j$(nproc) cockroachoss.exe BUILDTYPE=release \
             XGOOS=windows \
             XGOARCH=amd64 \
             XCMAKE_SYSTEM_NAME=Windows \
             TARGET_TRIPLE=x86_64-w64-mingw32 \
-            LDFLAGS=-static
+            XCC="$HOME/xbin/x86_64-w64-mingw32-gcc" \
+            XCXX="$HOME/xbin/x86_64-w64-mingw32-g++" \
+            LDFLAGS="-static -Wl,--allow-multiple-definition"
         env:
           CGO_ENABLED: "1"
-          CC: x86_64-w64-mingw32-gcc
-          CXX: x86_64-w64-mingw32-g++
           NODE_OPTIONS: "--openssl-legacy-provider"
+
+      - name: Locate the Windows binary
+        run: |
+          exe=$(ls cockroachoss*.exe 2>/dev/null | head -1 || true)
+          [ -z "$exe" ] && exe=$(ls cockroachoss 2>/dev/null | head -1 || true)
+          if [ -z "$exe" ]; then echo "no cockroachoss binary produced"; ls -l; exit 1; fi
+          [ "$exe" = "cockroachoss.exe" ] || cp "$exe" cockroachoss.exe
+          ls -l cockroachoss.exe
 
       - name: Upload Windows binary
         uses: actions/upload-artifact@v4
@@ -160,6 +197,8 @@ jobs:
     name: Create multi-arch manifest
     runs-on: ubuntu-latest
     needs: build
+    # Publish-only: skip on PR / merge-queue gating runs.
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
     steps:
       - uses: docker/login-action@v3
         with:
