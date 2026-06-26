@@ -112,6 +112,50 @@ jobs:
           path: cockroachoss.exe
           if-no-files-found: error
 
+  msix:
+    name: Package Windows MSIX
+    needs: build-windows
+    runs-on: windows-latest
+    # Set secrets COCKROACH_PFX_BASE64 + COCKROACH_PFX_PASSWORD for a trusted
+    # cert; without them the package self-signs a TEST cert (installable only
+    # after trusting it).
+    env:
+      COCKROACH_PFX_BASE64: ${{ secrets.COCKROACH_PFX_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Windows binary
+        uses: actions/download-artifact@v4
+        with:
+          name: cockroach-windows-amd64
+          path: winbin
+
+      - name: Stage binary as cockroach.exe
+        shell: bash
+        run: |
+          mkdir -p bin
+          cp winbin/cockroachoss.exe bin/cockroach.exe
+          cp winbin/*.dll bin/ 2>/dev/null || true
+          ls -l bin
+
+      - name: Import signing cert
+        if: ${{ env.COCKROACH_PFX_BASE64 != '' }}
+        shell: bash
+        run: echo "$COCKROACH_PFX_BASE64" | base64 -d > cockroach.pfx
+
+      - name: Pack + sign MSIX
+        shell: pwsh
+        run: |
+          $pfx = if (Test-Path cockroach.pfx) { @("-PfxPath","cockroach.pfx","-PfxPassword","${{ secrets.COCKROACH_PFX_PASSWORD }}") } else { @() }
+          pwsh packaging/msix/pack.ps1 -BinDir bin -Version "22.1.0.${{ github.run_number }}" -OutDir dist @pfx
+
+      - name: Upload MSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: cockroach-msix
+          path: dist/*.msix
+          if-no-files-found: error
+
   manifest:
     name: Create multi-arch manifest
     runs-on: ubuntu-latest
